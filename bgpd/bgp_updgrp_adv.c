@@ -1189,8 +1189,8 @@ void group_announce_route(struct bgp *bgp, afi_t afi, safi_t safi,
 	/* If suppress fib is enabled, the route will be advertised when
 	 * FIB status is received
 	 */
-	if (!bgp_check_advertise(bgp, dest, safi))
-		return;
+	// if (!bgp_check_advertise(bgp, dest, safi))
+	// 	return;
 
 	update_group_af_walk(bgp, afi, safi, group_announce_route_walkcb, &ctx);
 }
