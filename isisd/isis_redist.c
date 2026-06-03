@@ -826,8 +826,6 @@ int isis_redist_config_write(struct vty *vty, struct isis_area *area,
 		return 0;
 
 	for (type = 0; type < ZEBRA_ROUTE_MAX; type++) {
-		if (type == PROTO_TYPE)
-			continue;
 
 		for (level = 1; level <= ISIS_LEVELS; level++) {
 			redist_list = area->redist_settings[redist_protocol(

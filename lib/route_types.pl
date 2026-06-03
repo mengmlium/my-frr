@@ -135,7 +135,8 @@ sub collect {
 		next if ($ip_prot == 1 && $daemon eq "zebra" && $protodetail{$p}->{"cname"} eq "kernel");
 		next if ($ip_prot == 1 && $daemon eq "zebra" && $protodetail{$p}->{"cname"} eq "connected");
 		next if ($ip_prot == 1 && $daemon eq "zebra" && $protodetail{$p}->{"cname"} eq "local");
-		next if ($protodetail{$p}->{"daemon"} eq $daemon && $daemon ne "zebra");
+		next if ($protodetail{$p}->{"daemon"} eq $daemon && $daemon ne "zebra" &&
+			    !($daemon eq "isisd" && $protodetail{$p}->{"cname"} eq "isis"));
 		next if ($protodetail{$p}->{"restrict2"} ne "" && 
 		         $protodetail{$p}->{"restrict2"} ne $daemon);
 		next if ($protodetail{$p}->{"redist"} eq 0);

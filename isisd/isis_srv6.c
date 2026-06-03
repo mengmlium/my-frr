@@ -601,15 +601,13 @@ DEFUN(show_srv6_node, show_srv6_node_cmd,
 
 int isis_srv6_ifp_up_notify(struct interface *ifp)
 {
-	struct isis *isis = isis_lookup_by_vrfid(VRF_DEFAULT);
+	struct isis *isis;
 	struct listnode *node2;
 	struct isis_area *area;
 	struct isis_srv6_sid *sid;
 
-	if (!isis)
-		return 0;
-
-	/* Walk through all areas of the ISIS instance */
+	/* Walk through all ISIS instances (including VRF instances) */
+	frr_each (isis_instance_list, &im->isis, isis)
 	frr_each (isis_area_list, &isis->area_list, area) {
 		/* Skip area, if SRv6 is not enabled */
 		if (!area->srv6db.config.enabled)
@@ -640,16 +638,17 @@ int isis_srv6_ifp_up_notify(struct interface *ifp)
  */
 void isis_srv6_locators_request(void)
 {
-	struct isis *isis = isis_lookup_by_vrfid(VRF_DEFAULT);
+	struct isis *isis;
 	struct isis_area *area;
 
-	if (!isis)
-		return;
-
-	frr_each (isis_area_list, &isis->area_list, area)
-		if (area->srv6db.config.enabled &&
-		    area->srv6db.config.srv6_locator_name[0] != '\0' && !area->srv6db.srv6_locator)
-			isis_zebra_srv6_manager_get_locator(area->srv6db.config.srv6_locator_name);
+	/* Walk through all ISIS instances (including VRF instances) */
+	frr_each (isis_instance_list, &im->isis, isis)
+		frr_each (isis_area_list, &isis->area_list, area)
+			if (area->srv6db.config.enabled &&
+			    area->srv6db.config.srv6_locator_name[0] != '\0' &&
+			    !area->srv6db.srv6_locator)
+				isis_zebra_srv6_manager_get_locator(
+					area->srv6db.config.srv6_locator_name);
 }
 
 /**

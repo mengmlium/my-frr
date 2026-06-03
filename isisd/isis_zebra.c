@@ -479,12 +479,8 @@ void isis_zebra_send_adjacency_sid(int cmd, const struct sr_adjacency *sra)
 static int isis_zebra_read(ZAPI_CALLBACK_ARGS)
 {
 	struct zapi_route api;
-	struct isis *isis = NULL;
-
-	isis = isis_lookup_by_vrfid(vrf_id);
-
-	if (isis == NULL)
-		return -1;
+	struct isis *isis;
+	bool found_any = false;
 
 	if (zapi_route_decode(zclient->ibuf, &api) < 0)
 		return -1;
@@ -505,12 +501,24 @@ static int isis_zebra_read(ZAPI_CALLBACK_ARGS)
 		cmd = ZEBRA_REDISTRIBUTE_ROUTE_DEL;
 	}
 
-	if (cmd == ZEBRA_REDISTRIBUTE_ROUTE_ADD)
-		isis_redist_add(isis, api.type, &api.prefix, &api.src_prefix,
-				api.distance, api.metric, api.tag, api.instance);
-	else
-		isis_redist_delete(isis, api.type, &api.prefix, &api.src_prefix,
-				   api.instance);
+	/* Deliver to ALL ISIS instances matching the route VRF so that
+	 * multi-instance redistribution (e.g. ISIS-CORE <-> ISIS-ACCESS)
+	 * works correctly when both instances share the same VRF. */
+	frr_each (isis_instance_list, &im->isis, isis) {
+		if (isis->vrf_id != vrf_id)
+			continue;
+		found_any = true;
+		if (cmd == ZEBRA_REDISTRIBUTE_ROUTE_ADD)
+			isis_redist_add(isis, api.type, &api.prefix,
+					&api.src_prefix, api.distance,
+					api.metric, api.tag, api.instance);
+		else
+			isis_redist_delete(isis, api.type, &api.prefix,
+					   &api.src_prefix, api.instance);
+	}
+
+	if (!found_any)
+		return -1;
 
 	return 0;
 }
@@ -1186,10 +1194,10 @@ void isis_zebra_srv6_adj_sid_uninstall(struct srv6_adjacency *sra)
  */
 static int isis_zebra_process_srv6_locator_internal(struct srv6_locator *locator)
 {
-	struct isis *isis = isis_lookup_by_vrfid(VRF_DEFAULT);
+	struct isis *isis;
 	struct isis_area *area;
 
-	if (!isis || !locator)
+	if (!locator)
 		return -1;
 
 	zlog_info("%s: Received SRv6 locator %s %pFX, loc-block-len=%u, loc-node-len=%u func-len=%u, arg-len=%u",
@@ -1197,7 +1205,8 @@ static int isis_zebra_process_srv6_locator_internal(struct srv6_locator *locator
 		  locator->block_bits_length, locator->node_bits_length,
 		  locator->function_bits_length, locator->argument_bits_length);
 
-	/* Walk through all areas of the ISIS instance */
+	/* Walk through all ISIS instances (including VRF instances) */
+	frr_each (isis_instance_list, &im->isis, isis)
 	frr_each (isis_area_list, &isis->area_list, area) {
 		/*
 		 * Check if the IS-IS area is configured to use the received
@@ -1232,11 +1241,7 @@ static int isis_zebra_process_srv6_locator_internal(struct srv6_locator *locator
  */
 static int isis_zebra_process_srv6_locator_add(ZAPI_CALLBACK_ARGS)
 {
-	struct isis *isis = isis_lookup_by_vrfid(VRF_DEFAULT);
 	struct srv6_locator loc = {};
-
-	if (!isis)
-		return -1;
 
 	/* Decode the SRv6 locator */
 	if (zapi_srv6_locator_decode(zclient->ibuf, &loc) < 0)
@@ -1253,16 +1258,13 @@ static int isis_zebra_process_srv6_locator_add(ZAPI_CALLBACK_ARGS)
  */
 static int isis_zebra_process_srv6_locator_delete(ZAPI_CALLBACK_ARGS)
 {
-	struct isis *isis = isis_lookup_by_vrfid(VRF_DEFAULT);
+	struct isis *isis;
 	struct srv6_locator loc = {};
 	struct isis_area *area;
 	struct listnode *node, *nnode;
 	struct srv6_locator_chunk *chunk;
 	struct isis_srv6_sid *sid;
 	struct srv6_adjacency *sra;
-
-	if (!isis)
-		return -1;
 
 	/* Decode the received zebra message */
 	if (zapi_srv6_locator_decode(zclient->ibuf, &loc) < 0)
@@ -1275,7 +1277,8 @@ static int isis_zebra_process_srv6_locator_delete(ZAPI_CALLBACK_ARGS)
 		loc.node_bits_length, loc.function_bits_length,
 		loc.argument_bits_length);
 
-	/* Walk through all areas of the ISIS instance */
+	/* Walk through all ISIS instances (including VRF instances) */
+	frr_each (isis_instance_list, &im->isis, isis)
 	frr_each (isis_area_list, &isis->area_list, area) {
 		if (strncmp(area->srv6db.config.srv6_locator_name, loc.name,
 			    sizeof(area->srv6db.config.srv6_locator_name)) != 0)
@@ -1435,7 +1438,7 @@ void isis_zebra_release_srv6_sid(const struct srv6_sid_ctx *ctx, const char *loc
 
 static int isis_zebra_srv6_sid_notify(ZAPI_CALLBACK_ARGS)
 {
-	struct isis *isis = isis_lookup_by_vrfid(VRF_DEFAULT);
+	struct isis *isis;
 	struct srv6_sid_ctx ctx;
 	struct in6_addr sid_addr;
 	enum zapi_srv6_sid_notify note;
@@ -1450,9 +1453,6 @@ static int isis_zebra_srv6_sid_notify(ZAPI_CALLBACK_ARGS)
 	struct isis_srv6_sid *sid;
 	struct isis_adjacency *adj;
 
-	if (!isis)
-		return -1;
-
 	/* Decode the received notification message */
 	if (!zapi_srv6_sid_notify_decode(zclient->ibuf, &ctx, &sid_addr,
 					 &sid_func, NULL, &note, NULL, 0)) {
@@ -1464,6 +1464,8 @@ static int isis_zebra_srv6_sid_notify(ZAPI_CALLBACK_ARGS)
 		 __func__, srv6_sid_ctx2str(buf, sizeof(buf), &ctx), &sid_addr,
 		 sid_func, zapi_srv6_sid_notify2str(note));
 
+	/* Walk through all ISIS instances (including VRF instances) */
+	frr_each (isis_instance_list, &im->isis, isis)
 	frr_each (isis_area_list, &isis->area_list, area) {
 		if (!area->srv6db.config.enabled || !area->srv6db.srv6_locator)
 			continue;
