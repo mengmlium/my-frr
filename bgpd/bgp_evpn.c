@@ -1856,22 +1856,25 @@ static int update_evpn_type5_route(struct bgp *bgp_vrf, struct bgp_path_info *or
 		}
 	}
 
-	if (src_safi == SAFI_MPLS_VPN && src_attr && src_attr->srv6_l3service) {
-		// Preserve SRv6 L3VPN attributes from incoming VPN route
-		attr.srv6_l3service = XCALLOC(MTYPE_BGP_SRV6_L3SERVICE,
-					      sizeof(struct bgp_attr_srv6_l3service));
-		attr.srv6_l3service->sid_flags = src_attr->srv6_l3service->sid_flags;
-		attr.srv6_l3service->endpoint_behavior =
-			src_attr->srv6_l3service->endpoint_behavior;
-		attr.srv6_l3service->sid = src_attr->srv6_l3service->sid;
-		attr.srv6_l3service->loc_block_len = src_attr->srv6_l3service->loc_block_len;
-		attr.srv6_l3service->loc_node_len = src_attr->srv6_l3service->loc_node_len;
-		attr.srv6_l3service->func_len = src_attr->srv6_l3service->func_len;
-		attr.srv6_l3service->arg_len = src_attr->srv6_l3service->arg_len;
-		attr.srv6_l3service->transposition_len =
-			src_attr->srv6_l3service->transposition_len;
-		attr.srv6_l3service->transposition_offset =
-			src_attr->srv6_l3service->transposition_offset;
+	struct bgp_attr_srv6_l3service *src_l3service =
+		src_attr ? bgp_attr_get_srv6_l3service(src_attr) : NULL;
+
+	if (src_safi == SAFI_MPLS_VPN && src_l3service) {
+		struct bgp_attr_srv6_l3service *l3service;
+
+		/* Preserve SRv6 L3VPN attributes from incoming VPN route. */
+		l3service = XCALLOC(MTYPE_BGP_SRV6_L3SERVICE,
+				   sizeof(struct bgp_attr_srv6_l3service));
+		l3service->sid_flags = src_l3service->sid_flags;
+		l3service->endpoint_behavior = src_l3service->endpoint_behavior;
+		l3service->sid = src_l3service->sid;
+		l3service->loc_block_len = src_l3service->loc_block_len;
+		l3service->loc_node_len = src_l3service->loc_node_len;
+		l3service->func_len = src_l3service->func_len;
+		l3service->arg_len = src_l3service->arg_len;
+		l3service->transposition_len = src_l3service->transposition_len;
+		l3service->transposition_offset = src_l3service->transposition_offset;
+		bgp_attr_set_srv6_l3service(&attr, l3service);
 
 		/* Setup RT and encap extended community */
 		build_evpn_type5_route_extcomm(bgp_vrf, &attr, false);
@@ -6079,14 +6082,18 @@ int update_evpn_type5_route_to_vpn(struct bgp *bgp_vrf, struct prefix_evpn *p,
 	 * present, else treat as locally originated.
 	 */
 	if (src_attr)
-		attr = *src_attr;
+		bgp_attr_dup_into(&attr, src_attr);
 	else {
 		memset(&attr, 0, sizeof(attr));
 		bgp_attr_default_set(&attr, bgp_vrf, BGP_ORIGIN_IGP);
 	}
 
-	if (src_attr->srv6_l3service)
-		attr.srv6_l3service = bgp_attr_srv6_l3service_intern(src_attr->srv6_l3service);
+	struct bgp_attr_srv6_l3service *src_l3service =
+		bgp_attr_get_srv6_l3service(src_attr);
+
+	if (src_l3service)
+		bgp_attr_set_srv6_l3service(
+			&attr, bgp_attr_srv6_l3service_intern(src_l3service));
 
 	attr.label_index = src_attr->label_index;
 

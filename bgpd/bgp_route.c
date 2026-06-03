@@ -6598,7 +6598,7 @@ void bgp_update(struct peer *peer, const struct prefix *p, uint32_t addpath_id,
 			vpn_leak_to_vrf_update(bgp, pi, prd, peer);
 		}
 		if (SAFI_EVPN == safi && bgp->inst_type == BGP_INSTANCE_TYPE_DEFAULT &&
-		    ((attr && attr->srv6_l3service) || (pi && pi->extra && pi->extra->labels)))
+		    ((attr && bgp_attr_get_srv6_l3service(attr)) || (pi && pi->extra && pi->extra->labels)))
 			update_evpn_type5_route_to_vpn(bgp, (struct prefix_evpn *)p, pi, prd);
 
 		if (safi == SAFI_UNICAST && bgp->inst_type == BGP_INSTANCE_TYPE_DEFAULT &&
@@ -6712,7 +6712,7 @@ void bgp_update(struct peer *peer, const struct prefix *p, uint32_t addpath_id,
 		vpn_leak_to_vrf_update(bgp, new, prd, peer);
 	}
 	if (SAFI_EVPN == safi && bgp->inst_type == BGP_INSTANCE_TYPE_DEFAULT && attr &&
-	    attr->srv6_l3service) {
+	    bgp_attr_get_srv6_l3service(attr)) {
 		update_evpn_type5_route_to_vpn(bgp, (struct prefix_evpn *)p, new, prd);
 	}
 #ifdef ENABLE_BGP_VNC
