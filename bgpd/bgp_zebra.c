@@ -1485,9 +1485,13 @@ static void bgp_zebra_announce_parse_nexthop(struct bgp_path_info *info, const s
 		struct bgp_attr_srv6_l3service *srv6_l3service =
 			bgp_attr_get_srv6_l3service(mpinfo->attr);
 
-		if (((srv6_l3service && !sid_zero_ipv6(&srv6_l3service->sid)) ||
-		     (vpn_tmp && !sid_zero_ipv6(&vpn_tmp->sid))) &&
-		    !is_evpn) {
+		/*
+		 * Also program SRv6 SID-based SEG6 nexthops for EVPN Type-5 paths.
+		 * Without this, EVPN control-plane can converge while kernel H.Encaps
+		 * routes are never synthesized for these VPN prefixes.
+		 */
+		if ((srv6_l3service && !sid_zero_ipv6(&srv6_l3service->sid)) ||
+		    (vpn_tmp && !sid_zero_ipv6(&vpn_tmp->sid))) {
 			struct in6_addr *sid_tmp = srv6_l3service ? (&srv6_l3service->sid)
 								  : (&vpn_tmp->sid);
 
